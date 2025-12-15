@@ -1,0 +1,348 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+    #map { height: 100vh; width: 100%; }
+
+    #judul-peta {
+      position: absolute;
+      top: 15px; left: 50%; transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.95);
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: bold;
+      color: #2c3e50;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      z-index: 1000;
+    }
+
+    #widget-ip {
+      position: absolute;
+      bottom: 15px; left: 15px;
+      background: rgba(52, 152, 219, 0.9);
+      color: #fff;
+      padding: 12px 18px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      font-size: 14px;
+      z-index: 1000;
+      max-width: 200px;
+    }
+
+    .legend {
+      background: #fff;
+      padding: 10px 12px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      line-height: 1.5;
+      font-size: 13px;
+    }
+    .legend span { display:inline-block; width:18px; height:18px; margin-right:6px; vertical-align:middle; }
+
+    .custom-popup {
+      border-radius: 10px;
+      padding: 10px 15px;
+      background: #fff;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      animation: fadeIn 0.3s;
+      max-width: 220px;
+    }
+    .custom-popup h3 { margin: 0 0 5px; color: #2c3e50; font-size: 16px; }
+    .custom-popup p { margin: 0; font-size: 13px; line-height: 1.4; }
+    .custom-popup .cuaca { margin-top: 8px; background: #eef7ff; padding: 6px 10px; border-radius: 8px; font-size: 13px; }
+
+    @keyframes fadeIn { from {opacity:0; transform: translateY(-5px);} to {opacity:1; transform: translateY(0);} }
+  </style>
+</head>
+<body>
+
+<div id="judul-peta">Peta Batas Kecamatan Nagrak – Kawasan Rawan Banjir</div>
+<!-- PANEL INFORMASI GPS -->
+<div id="gps-panel" style="
+  position:absolute;
+  top:20px;
+  left:20px;
+  background:white;
+  padding:12px 16px;
+  border-radius:12px;
+  font-family:Arial;
+  box-shadow:0 2px 6px rgba(0,0,0,.3);
+  z-index:1000;
+  min-width:220px;
+">
+  <b>GPS Tracking</b>
+  <hr>
+  <div>Latitude: <span id="lat">-</span></div>
+  <div>Longitude: <span id="lng">-</span></div>
+  <div>Speed: <span id="speed">-</span> km/h</div>
+  <div>Time: <span id="time">-</span></div>
+</div>
+
+<div id="widget-ip">Loading cuaca berdasarkan IP...</div>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+var center = [-6.86861, 106.80250];
+var map = L.map('map', { center: center, zoom: 14 });
+
+// ==================== BASEMAP ====================
+var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png');
+var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}');
+osm.addTo(map);
+
+// ==================== STYLE ======================
+function styleDesa(feature) { return { color: "#2ca25f", weight: 2, fillOpacity: 0.2 }; }
+function styleLine(feature) { return { color: "#e6550d", weight: 3, dashArray: '6,4' }; }
+
+// ==================== IP WEATHER ==================
+var ipWeather = null;
+fetch("https://ipapi.co/json/").then(r => r.json()).then(ip => {
+  if (!ip.latitude || !ip.longitude) return;
+  fetch(`https://api.open-meteo.com/v1/forecast?latitude=${ip.latitude}&longitude=${ip.longitude}&current=temperature_2m,relative_humidity_2m&timezone=auto`)
+    .then(r => r.json())
+    .then(wx => {
+      ipWeather = {
+        temp: wx.current.temperature_2m,
+        hum: wx.current.relative_humidity_2m,
+        city: ip.city,
+        region: ip.region
+      };
+      document.getElementById("widget-ip").innerHTML = `
+        ⛅ Cuaca Berdasarkan IP<br>
+        Suhu: ${ipWeather.temp}°C<br>
+        Kelembapan: ${ipWeather.hum}%<br>
+        Lokasi: ${ipWeather.city}, ${ipWeather.region}
+      `;
+    });
+});
+
+// ==================== POLYGON & HOVER ==================
+function onEachFeature(feature, layer) {
+  layer.on({
+    mouseover: function(e){ e.target.setStyle({ weight:4, color:'#f39c12', fillOpacity:0.3 }); },
+    mouseout: function(e){ batasDesa.resetStyle(e.target); }
+    // Klik popup dihapus
+  });
+}
+
+// ==================== LAYER GEOJSON ====================
+var batasDesa = L.geoJSON(null, { style: styleDesa, onEachFeature: onEachFeature }).addTo(map);
+var polylineLayer = L.geoJSON(null, { style: styleLine });
+
+fetch("data/batas-nagrak.geojson").then(r=>r.json()).then(j=>batasDesa.addData(j));
+fetch("data/jalan.geojson").then(r=>r.json()).then(j=>polylineLayer.addData(j));
+
+// ==================== OTHER LAYERS ====================
+var rawanBanjir = L.layerGroup();
+var layerCuacaBMKG = L.layerGroup().addTo(map);
+var layerHujan = L.layerGroup().addTo(map);
+var layerSungai = L.layerGroup().addTo(map);
+var layerCuacaADM4 = L.layerGroup().addTo(map);
+
+// BMKG XML
+fetch("https://data.bmkg.go.id/DataMKG/MEWS/DigitalForecast/501212.xml")
+.then(res=>res.text()).then(xmlText=>{
+  var parser=new DOMParser();
+  var xml=parser.parseFromString(xmlText,"text/xml");
+  var suhu=xml.querySelector('parameter[id="t"] value').textContent;
+  var humidity=xml.querySelector('parameter[id="hu"] value').textContent;
+  L.circleMarker(center,{radius:10,color:'#3498db',fillColor:'#5dade2',fillOpacity:0.7})
+    .bindPopup(`<b>BMKG</b><br>Suhu: ${suhu}°C<br>Kelembapan: ${humidity}%`).addTo(layerCuacaBMKG);
+});
+
+// Curah Hujan
+fetch("https://api.open-meteo.com/v1/forecast?latitude=-6.8686&longitude=106.8025&daily=precipitation_sum&timezone=Asia/Jakarta")
+.then(r=>r.json()).then(data=>{
+  let h = data.daily.precipitation_sum[0];
+  L.circleMarker(center,{radius:10,color:'#ff5733',fillColor:'#ff9b71',fillOpacity:0.7})
+    .bindPopup(`<b>Curah Hujan</b><br>Hari ini: ${h} mm`).addTo(layerHujan);
+});
+
+// TMA Sungai
+fetch("https://data.inaware.id/api/tma/geojson").then(r=>r.json()).then(json=>{
+  L.geoJSON(json, { pointToLayer: function(f,latlng){return L.circleMarker(latlng,{radius:6,color:"#0077ff",fillColor:"#00aaff",fillOpacity:0.8});} }).addTo(layerSungai);
+});
+
+// BMKG ADM4
+fetch("https://api.bmkg.go.id/publik/prakiraan-cuaca?adm4=31.71.03.1001")
+.then(r=>r.json()).then(d=>{
+  if(d.data && d.data[0]){
+    var x=d.data[0];
+    L.circleMarker(center,{radius:10,color:'#f1c40f',fillColor:'#f7dc6f',fillOpacity:0.7})
+      .bindPopup(`<b>BMKG ADM4</b><br>${x.lokasi}<br>${x.cuaca}<br>Suhu: ${x.t}`).addTo(layerCuacaADM4);
+  }
+});
+
+// ==================== GEMPA TERBARU BMKG ====================
+var layerGempa = L.layerGroup().addTo(map);
+function loadGempa(){
+  fetch("https://data.bmkg.go.id/DataMKG/TEWS/autogempa.json")
+    .then(res => res.json())
+    .then(data => {
+      layerGempa.clearLayers();
+      if(data && data.Infogempa){
+        var g = data.Infogempa;
+        var coords = g.point.coordinates.split(",");
+        var lon = parseFloat(coords[0]);
+        var lat = parseFloat(coords[1]);
+        L.circleMarker([lat, lon], {
+          radius: 12,
+          color: "#e74c3c",
+          fillColor: "#e74c3c",
+          fillOpacity: 0.8
+        }).bindPopup(`
+          <div class="custom-popup">
+            <h3>📍 Gempa Terkini</h3>
+            <b>Waktu:</b> ${g.Tanggal} ${g.Jam}<br>
+            <b>Magnitudo:</b> ${g.Magnitude}<br>
+            <b>Kedalaman:</b> ${g.Kedalaman} km<br>
+            <b>Wilayah:</b> ${g.Wilayah1}<br>
+            <b>Potensi Tsunami:</b> ${g.Potensi}
+          </div>
+        `).addTo(layerGempa);
+      }
+    })
+    .catch(err => console.error("Error memuat data gempa:", err));
+}
+// load pertama kali
+loadGempa();
+// reload setiap 5 menit
+setInterval(loadGempa, 300000);
+
+// ==================== LEGEND ====================
+var legend = L.control({position:"bottomright"});
+legend.onAdd=function(map){
+  var div=L.DomUtil.create('div','legend');
+  div.innerHTML=`
+    <b>Legend</b><br>
+    <span style="background:#2ca25f"></span> Batas Kecamatan<br>
+    <span style="background:#e6550d"></span> Jalan<br>
+    <span style="background:#ff5733"></span> Curah Hujan<br>
+    <span style="background:#3498db"></span> BMKG<br>
+    <span style="background:#f1c40f"></span> BMKG ADM4<br>
+    <span style="background:#0077ff"></span> TMA Sungai<br>     
+    <span style="background:#e74c3c"></span> Gempa Terkini
+  `;
+  return div;
+};
+legend.addTo(map);
+
+// ==================== LAYER CONTROL ====================
+var baseMaps = { "OpenStreetMap": osm, "Satellite": sat };
+var overlays = {
+  "Batas Kecamatan": batasDesa,
+  "Jalan": polylineLayer,
+  "Rawan Banjir": rawanBanjir,
+  "Cuaca BMKG": layerCuacaBMKG,
+  "Cuaca BMKG (ADM4)": layerCuacaADM4,
+  "Curah Hujan": layerHujan,
+  "Data Sungai (TMA)": layerSungai,
+  "Gempa Terkini": layerGempa
+};
+L.control.layers(baseMaps, overlays, { collapsed:true }).addTo(map);
+L.control.scale({ position:"bottomleft" }).addTo(map);
+
+// ==================================================
+// GPS TRACKING SIMULATION (TAMBAHAN TANPA UBAH LOGIC)
+// ==================================================
+
+// Posisi awal GPS (sekitar Nagrak)
+var gpsPosition = [-6.8690, 106.8020];
+
+// Marker GPS
+var gpsMarker = L.marker(gpsPosition, {
+  icon: L.icon({
+    iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+    iconSize: [30, 30],
+    iconAnchor: [15, 30]
+  })
+}).addTo(map).bindPopup("GPS Device");
+
+// Polyline riwayat pergerakan
+var gpsPath = [];
+var gpsPolyline = L.polyline(gpsPath, {
+  color: "blue",
+  weight: 3
+}).addTo(map);
+
+// Simulasi API GPS
+function fakeGpsApi() {
+  return {
+    lat: gpsPosition[0] + (Math.random() - 0.5) * 0.001,
+    lng: gpsPosition[1] + (Math.random() - 0.5) * 0.001,
+    speed: (20 + Math.random() * 40).toFixed(1),
+    time: new Date().toLocaleTimeString()
+  };
+}
+
+// Update GPS setiap 5 detik
+setInterval(function () {
+  var data = fakeGpsApi();
+
+  gpsPosition = [data.lat, data.lng];
+  gpsMarker.setLatLng(gpsPosition);
+
+  gpsPath.push(gpsPosition);
+  gpsPolyline.setLatLngs(gpsPath);
+
+  document.getElementById("lat").innerText = data.lat.toFixed(6);
+  document.getElementById("lng").innerText = data.lng.toFixed(6);
+  document.getElementById("speed").innerText = data.speed;
+  document.getElementById("time").innerText = data.time;
+
+}, 5000);
+
+// ==================== TITIK RAWAN BANJIR ====================
+
+// Icon pin lokasi
+var iconBanjir = L.icon({
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+// Data titik rawan banjir
+var titikBanjir = [
+  {
+    name: "Rawan Banjir - Kampung Cibodas",
+    coords: [-6.8715, 106.7985],
+    info: "Lokasi sering tergenang saat hujan deras."
+  },
+  {
+    name: "Rawan Banjir - Kampung Pasir Laja",
+    coords: [-6.8750, 106.8060],
+    info: "Dekat area aliran air dengan drainase buruk."
+  },
+  {
+    name: "Rawan Banjir - Sungai Cimandiri",
+    coords: [-6.8670, 106.8125],
+    info: "Sisi timur sungai, risiko meluap tinggi."
+  }
+];
+
+// Tambahkan marker ke layer rawan banjir
+titikBanjir.forEach(function(t){
+  L.marker(t.coords, { icon: iconBanjir })
+    .bindPopup(`
+      <div class="custom-popup">
+        <h3>⚠️ ${t.name}</h3>
+        <p>${t.info}</p>
+      </div>
+    `)
+    .addTo(rawanBanjir);
+});
+
+
+
+</script>
+</body>
+</html>
