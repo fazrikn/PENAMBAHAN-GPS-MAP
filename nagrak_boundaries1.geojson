@@ -1,0 +1,68 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type":"Feature",
+      "properties":{
+        "name":"Kecamatan Nagrak (aproksimasi)",
+        "admin":"Kecamatan Nagrak, Kab. Sukabumi, Jabar"
+      },
+      "geometry":{
+        "type":"Polygon",
+        "coordinates":[
+          [
+            [106.7900,-6.8800],
+            [106.8200,-6.8800],
+            [106.8200,-6.8500],
+            [106.7900,-6.8500],
+            [106.7900,-6.8800]
+          ]
+        ]
+      }
+    },
+    {
+      "type":"Feature",
+      "properties":{
+        "name":"Desa Nagrak Selatan (aproksimasi)",
+        "admin":"Desa Nagrak Selatan, Kec. Nagrak"
+      },
+      "geometry":{
+        "type":"Polygon",
+        "coordinates":[
+          [
+            [106.7990,-6.8720],
+            [106.8060,-6.8720],
+            [106.8060,-6.8650],
+            [106.7990,-6.8650],
+            [106.7990,-6.8720]
+          ]
+        ]
+      }
+    },
+    {
+      "type":"Feature",
+      "properties":{
+        "name":"Centroid Marker - Desa Nagrak Selatan",
+        "popup":"Desa Nagrak Selatan (koordinat aproks.)"
+      },
+      "geometry":{
+        "type":"Point",
+        "coordinates":[106.80250,-6.86861]
+      }
+    },
+    {
+      "type":"Feature",
+      "properties":{
+        "name":"Polyline - Jalan utama (contoh)"
+      },
+      "geometry":{
+        "type":"LineString",
+        "coordinates":[
+          [106.7995,-6.8715],
+          [106.8015,-6.8690],
+          [106.8045,-6.8665]
+        ]
+      }
+    }
+  ]
+}
